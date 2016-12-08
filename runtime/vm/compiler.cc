@@ -577,7 +577,15 @@ void CompileParsedFunctionHelper::FinalizeCompilation(
   graph_compiler->FinalizeStackmaps(code);
   graph_compiler->FinalizeVarDescriptors(code);
   graph_compiler->FinalizeExceptionHandlers(code);
+  graph_compiler->FinalizeExceptionMaps(code);
   graph_compiler->FinalizeStaticCallTargetsTable(code);
+
+  /*if (FlowGraphPrinter::ShouldPrint(function)) {
+    TypedData& data = TypedData::Handle(code.exception_maps());
+
+    OS::PrintErr("Functoin %s has %" Pd "entries in exception maps\n",
+      function.ToFullyQualifiedCString(), data.Length());
+  }*/
 
 #if !defined(PRODUCT)
   // Set the code source map after setting the inlined information because

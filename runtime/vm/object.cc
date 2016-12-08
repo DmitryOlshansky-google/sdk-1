@@ -13712,6 +13712,13 @@ void Code::set_stackmaps(const Array& maps) const {
 }
 
 
+void Code::set_exception_maps(const TypedData& maps) const {
+  StorePointer(&raw_ptr()->exception_maps_, maps.raw());
+  INC_STAT(Thread::Current(), total_code_size,
+           maps.IsNull() ? 0 : maps.Length() * sizeof(uword));
+}
+
+
 void Code::set_deopt_info_array(const Array& array) const {
 #if defined(DART_PRECOMPILED_RUNTIME)
   UNREACHABLE();

@@ -159,6 +159,24 @@ class ExceptionHandlerList : public ZoneAllocated {
   DISALLOW_COPY_AND_ASSIGN(ExceptionHandlerList);
 };
 
+class ExceptionMapsList : public ZoneAllocated {
+ public:
+  explicit ExceptionMapsList():recent_(0) {}
+
+  ~ExceptionMapsList() {}
+
+  void NewMapping(int pc_offset);
+  void AppendPair(int src, int dest);
+  void EndMapping();
+  RawTypedData* FinalizeExceptionMaps();
+ private:
+  GrowableArray<int> mappings_;
+  int recent_;
+
+  DISALLOW_COPY_AND_ASSIGN(ExceptionMapsList);
+};
+
+
 }  // namespace dart
 
 #endif  // RUNTIME_VM_CODE_DESCRIPTORS_H_

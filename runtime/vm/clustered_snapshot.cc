@@ -1487,6 +1487,7 @@ class CodeSerializationCluster : public SerializationCluster {
     s->Push(code->ptr()->exception_handlers_);
     s->Push(code->ptr()->pc_descriptors_);
     s->Push(code->ptr()->stackmaps_);
+    s->Push(code->ptr()->exception_maps_);
 
     if (s->kind() == Snapshot::kAppWithJIT) {
       s->Push(code->ptr()->deopt_info_array_);
@@ -1611,6 +1612,7 @@ class CodeDeserializationCluster : public DeserializationCluster {
       code->ptr()->pc_descriptors_ =
           reinterpret_cast<RawPcDescriptors*>(d->ReadRef());
       code->ptr()->stackmaps_ = reinterpret_cast<RawArray*>(d->ReadRef());
+      code->ptr()->exception_maps_ = reinterpret_cast<RawTypedData*>(d->ReadRef());
 
 #if !defined(DART_PRECOMPILED_RUNTIME)
       if (d->kind() == Snapshot::kAppWithJIT) {

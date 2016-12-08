@@ -2153,6 +2153,21 @@ void CreateArrayInstr::EmitNativeCode(FlowGraphCompiler* compiler) {
   compiler->AddStubCallTarget(stub);
   compiler->GenerateCall(token_pos(), *StubCode::AllocateArray_entry(),
                          RawPcDescriptors::kOther, locs());
+  if (compiler->CurrentTryIndex() != CatchClauseNode::kInvalidTryIndex) {
+    // Create deopt id for a call inside of a try block.
+    if (deopt_id() != Thread::kNoDeoptId) {
+      // Marks either the continuation point in unoptimized code or the
+      // deoptimization point in optimized code, after call.
+      const intptr_t deopt_id_after = Thread::ToDeoptAfter(deopt_id());
+      if (compiler->is_optimizing()) {
+        compiler->AddDeoptIndexAtCall(deopt_id_after);
+      } else {
+        // Add deoptimization continuation point after the call and before the
+        // arguments are removed.
+        compiler->AddCurrentDescriptor(RawPcDescriptors::kDeopt, deopt_id_after, token_pos());
+      }
+    }
+  }
   __ Bind(&done);
   ASSERT(locs()->out(0).reg() == kResultReg);
 }

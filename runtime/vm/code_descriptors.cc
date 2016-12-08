@@ -131,5 +131,30 @@ RawExceptionHandlers* ExceptionHandlerList::FinalizeExceptionHandlers(
   return handlers.raw();
 }
 
+void ExceptionMapsList::AppendPair(int src, int dest) {
+  mappings_.Add(src);
+  mappings_.Add(dest);
+  recent_ += 2;
+}
+
+void ExceptionMapsList::NewMapping(int pc_offset) {
+  ASSERT(recent_ == 0);
+  mappings_.Add(pc_offset);
+  mappings_.Add(0); // size of mapping
+}
+
+void ExceptionMapsList::EndMapping() {
+  mappings_[mappings_.length()-1-recent_] = recent_;
+  recent_ = 0;
+}
+
+RawTypedData* ExceptionMapsList::FinalizeExceptionMaps() {
+  const TypedData& td = TypedData::Handle(
+    TypedData::New(kTypedDataInt32ArrayCid, mappings_.length(), Heap::kOld));
+  for(intptr_t i = 0; i < mappings_.length(); i++) {
+    td.SetInt32(i * 4, mappings_[i]);
+  }
+  return td.raw();
+}
 
 }  // namespace dart

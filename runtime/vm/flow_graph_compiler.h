@@ -455,6 +455,8 @@ class FlowGraphCompiler : public ValueObject {
 
   void EmitTrySync(Instruction* instr, intptr_t try_index);
 
+  void EmitExceptionsMetaData(Instruction* instr, intptr_t try_index);
+
   void EmitComment(Instruction* instr);
 
   intptr_t StackSize() const;
@@ -508,6 +510,7 @@ class FlowGraphCompiler : public ValueObject {
   RawArray* CreateDeoptInfo(Assembler* assembler);
   void FinalizeStackmaps(const Code& code);
   void FinalizeVarDescriptors(const Code& code);
+  void FinalizeExceptionMaps(const Code& code);
   void FinalizeStaticCallTargetsTable(const Code& code);
 
   const Class& double_class() const { return double_class_; }
@@ -754,6 +757,7 @@ class FlowGraphCompiler : public ValueObject {
   DescriptorList* pc_descriptors_list_;
   StackmapTableBuilder* stackmap_table_builder_;
   CodeSourceMapBuilder* code_source_map_builder_;
+  ExceptionMapsList* exception_maps_list_;
   intptr_t saved_code_size_;
   GrowableArray<BlockInfo*> block_info_;
   GrowableArray<CompilerDeoptInfo*> deopt_infos_;

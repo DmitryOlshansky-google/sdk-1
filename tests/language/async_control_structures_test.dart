@@ -93,5 +93,6 @@ main() {
 
     asyncReturn = asyncImplicitReturn();
     expectThenValue(asyncReturn, null);
+
   }
 }

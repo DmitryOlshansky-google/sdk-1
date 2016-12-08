@@ -9,6 +9,7 @@
 #include "vm/dart_api_impl.h"
 #include "vm/dart_entry.h"
 #include "vm/debugger.h"
+#include "vm/deopt_instructions.h"
 #include "vm/flags.h"
 #include "vm/log.h"
 #include "vm/longjump.h"
@@ -139,7 +140,6 @@ static void BuildStackTrace(StacktraceBuilder* builder) {
   }
 }
 
-
 // Iterate through the stack frames and try to find a frame with an
 // exception handler. Once found, set the pc, sp and fp so that execution
 // can continue in that frame. Sets 'needs_stacktrace' if there is no
@@ -148,7 +148,10 @@ static bool FindExceptionHandler(Thread* thread,
                                  uword* handler_pc,
                                  uword* handler_sp,
                                  uword* handler_fp,
-                                 bool* needs_stacktrace) {
+                                 bool* needs_stacktrace,
+                                 int* pc_offset,
+                                 RawCode** code,
+                                 RawArray** deopt_frame) {
   StackFrameIterator frames(StackFrameIterator::kDontValidateFrames);
   StackFrame* frame = frames.NextFrame();
   if (frame == NULL) return false;  // No Dart frame.
@@ -165,6 +168,11 @@ static bool FindExceptionHandler(Thread* thread,
           *handler_pc = temp_handler_pc;
           *handler_sp = frame->sp();
           *handler_fp = frame->fp();
+          *code = frame->LookupDartCode();
+          Code& c = Code::Handle(*code);
+          if(c.is_optimized()){
+            *pc_offset = frame->pc() - c.PayloadStart();
+          }
         }
         if (*needs_stacktrace || is_catch_all) {
           return true;
@@ -179,6 +187,11 @@ static bool FindExceptionHandler(Thread* thread,
     *handler_pc = frame->pc();
     *handler_sp = frame->sp();
     *handler_fp = frame->fp();
+    *code = frame->LookupDartCode();
+    Code& c = Code::Handle(*code);
+    if(!c.IsNull() && c.is_optimized()){
+      *pc_offset = frame->pc() - c.PayloadStart();
+    }
   }
   // No catch-all encountered, needs stacktrace.
   *needs_stacktrace = true;
@@ -371,6 +384,14 @@ RawStacktrace* Exceptions::CurrentStacktrace() {
   return full_stacktrace.raw();
 }
 
+static RawObject** VariableAt(uword fp, int stack_slot) {
+  if(stack_slot < 0) {
+    return reinterpret_cast<RawObject**>(ParamAddress(fp, -stack_slot));
+  }
+  else {
+    return reinterpret_cast<RawObject**>(LocalVarAddress(fp, kFirstLocalSlotFromFp - stack_slot));
+  }
+}
 
 static void ThrowExceptionHelper(Thread* thread,
                                  const Instance& incoming_exception,
@@ -393,10 +414,14 @@ static void ThrowExceptionHelper(Thread* thread,
   Instance& stacktrace = Instance::Handle(zone);
   bool handler_exists = false;
   bool handler_needs_stacktrace = false;
+  RawCode* raw_code = NULL;
+  int pc_offset = 0;
+  RawArray* deopt_frame;
   // Find the exception handler and determine if the handler needs a
   // stacktrace.
   handler_exists = FindExceptionHandler(thread, &handler_pc, &handler_sp,
-                                        &handler_fp, &handler_needs_stacktrace);
+                                        &handler_fp, &handler_needs_stacktrace,
+                                        &pc_offset, &raw_code, &deopt_frame);
   if (use_preallocated_stacktrace) {
     if (handler_pc == 0) {
       // No Dart frame.
@@ -448,6 +473,58 @@ static void ThrowExceptionHelper(Thread* thread,
     THR_Print("%s\n", stacktrace.ToCString());
   }
   if (handler_exists) {
+    Code& code = Code::Handle(raw_code);
+    if(!code.IsNull() && code.is_optimized()){
+      const TypedData& td = TypedData::Handle(code.exception_maps());
+      
+      intptr_t i = 0;
+
+      Function& fun = Function::Handle();
+      Object& owner = Object::Handle();
+      owner = code.owner();
+      if (owner.IsFunction()) {
+        fun ^= owner.raw();
+      }
+/*
+*/
+      // OS::Print("Num params: %d\n", num_params);
+      while (i < td.Length()) {
+        OS::Print("PC %d vs %d\n", pc_offset, td.GetInt32(i*4));
+        int target_offset = td.GetInt32(i*4);
+        if(pc_offset <= target_offset) {
+          int variables = td.GetInt32((i+1)*4);
+          int start = i+2;
+          uword fp = handler_fp;
+          for(int j = 0; j < variables; j+=2) {
+            int src = td.GetInt32((start + j)*4);
+            int dest = td.GetInt32((start + j + 1)*4);
+            //int reverse_dest = num_params - dest;
+            OS::Print("%d --> %d\n", src, dest);
+            OS::Print("%p --> %p\n", *VariableAt(fp, src), *VariableAt(fp, dest));
+            *VariableAt(fp, dest) =  *VariableAt(fp, src);
+          }
+          
+          /*OS::Print("Frame: (%d), ", kParamEndSlotFromFp);
+          for(int j=-2; j<17; j++) {
+              OS::Print("%p ",
+                *reinterpret_cast<RawObject**>(ParamAddress(fp, -j)));
+          }
+
+          OS::Print("\n");*/
+          break;
+        }
+        else {
+          i += 2 + td.GetInt32((i+1)*4);
+        }
+      }
+      if(i == td.Length()) {
+        OS::Print("Failed to find metadata! TD length %" Pd "\n", td.Length());
+        if (!fun.IsNull()) {
+          OS::PrintErr("Function was: %s", fun.ToFullyQualifiedCString());
+        }
+        ASSERT(false);
+      }
+    }
     // Found a dart handler for the exception, jump to it.
     JumpToExceptionHandler(thread, handler_pc, handler_sp, handler_fp,
                            exception, stacktrace);

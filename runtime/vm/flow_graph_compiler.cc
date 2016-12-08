@@ -219,6 +219,7 @@ FlowGraphCompiler::FlowGraphCompiler(
       pc_descriptors_list_(NULL),
       stackmap_table_builder_(NULL),
       code_source_map_builder_(NULL),
+      exception_maps_list_(NULL),
       saved_code_size_(0),
       block_info_(block_order_.length()),
       deopt_infos_(),
@@ -290,6 +291,7 @@ bool FlowGraphCompiler::IsPotentialUnboxedField(const Field& field) {
 void FlowGraphCompiler::InitCompiler() {
   pc_descriptors_list_ = new (zone()) DescriptorList(64);
   exception_handlers_list_ = new (zone()) ExceptionHandlerList();
+  exception_maps_list_ = new (zone()) ExceptionMapsList();
   block_info_.Clear();
   // Conservative detection of leaf routines used to remove the stack check
   // on function entry.
@@ -435,6 +437,56 @@ void FlowGraphCompiler::CompactBlocks() {
 }
 
 
+void FlowGraphCompiler::EmitExceptionsMetaData(Instruction* instr, intptr_t try_index) {
+  if (is_optimizing() && instr->MayThrow() &&
+             (try_index != CatchClauseNode::kInvalidTryIndex)) {
+    Environment* env = instr->env()->Outermost();
+    CatchBlockEntryInstr* catch_block =
+        flow_graph().graph_entry()->GetCatchEntry(try_index);
+    const GrowableArray<Definition*>* idefs = catch_block->initial_definitions();
+    exception_maps_list_->NewMapping(assembler()->CodeSize());
+    // Parameters first.
+    intptr_t i = 0;
+    const intptr_t num_non_copied_params = flow_graph().num_non_copied_params();
+    for (; i < num_non_copied_params; ++i) {
+      // Don't sync captured parameters. They are not in the environment.
+      if (flow_graph().captured_parameters()->Contains(i)) continue;
+      if ((*idefs)[i]->IsConstant()) continue;  // Common constants
+      Location src = env->LocationAt(i);
+      if(!src.IsStackSlot()){
+        OS::Print("Param Kind %d Constant %d\n", (int)src.kind(), (int)src.IsConstant());
+        continue;  
+      }
+      intptr_t dest_index = i - num_non_copied_params;
+      if(src.stack_index() != dest_index) {
+        exception_maps_list_->AppendPair(src.stack_index(), dest_index);
+      }
+    }
+
+    // Process locals. Skip exception_var and stacktrace_var.
+    intptr_t local_base = kFirstLocalSlotFromFp + num_non_copied_params;
+    intptr_t ex_idx = local_base - catch_block->exception_var().index();
+    intptr_t st_idx = local_base - catch_block->stacktrace_var().index();
+    for (; i < flow_graph().variable_count(); ++i) {
+      // Don't sync captured parameters. They are not in the environment.
+      if (flow_graph().captured_parameters()->Contains(i)) continue;
+      if (i == ex_idx || i == st_idx) continue;
+      if ((*idefs)[i]->IsConstant()) continue;
+      Location src = env->LocationAt(i);
+      if(!src.IsStackSlot()){
+        OS::Print("Kind: %d Constant: %d\n", (int)src.kind(), (int)src.IsConstant());
+        //assert(src.IsStackSlot());
+        continue;
+      }
+      intptr_t dest_index = i - num_non_copied_params;
+      if(src.stack_index() != dest_index) {
+        exception_maps_list_->AppendPair(src.stack_index(), dest_index);
+      }
+    }
+    exception_maps_list_->EndMapping();
+  }
+}
+
 void FlowGraphCompiler::EmitInstructionPrologue(Instruction* instr) {
   if (!is_optimizing()) {
     if (instr->CanBecomeDeoptimizationTarget() && !instr->IsGoto()) {
@@ -448,7 +500,7 @@ void FlowGraphCompiler::EmitInstructionPrologue(Instruction* instr) {
   } else if (instr->MayThrow() &&
              (CurrentTryIndex() != CatchClauseNode::kInvalidTryIndex)) {
     // Optimized try-block: Sync locals to fixed stack locations.
-    EmitTrySync(instr, CurrentTryIndex());
+    // EmitTrySync(instr, CurrentTryIndex());
   }
 }
 
@@ -579,6 +631,7 @@ void FlowGraphCompiler::VisitBlocks() {
         ASSERT(pending_deoptimization_env_ == NULL);
         pending_deoptimization_env_ = instr->env();
         instr->EmitNativeCode(this);
+        EmitExceptionsMetaData(instr, entry->try_index());
         pending_deoptimization_env_ = NULL;
         EmitInstructionEpilogue(instr);
         EndCodeSourceRange(instr->token_pos());
@@ -1107,6 +1160,10 @@ void FlowGraphCompiler::FinalizeVarDescriptors(const Code& code) {
   code.set_var_descriptors(var_descs);
 }
 
+void FlowGraphCompiler::FinalizeExceptionMaps(const Code& code) {
+  code.set_exception_maps(TypedData::Handle(
+    exception_maps_list_->FinalizeExceptionMaps()));
+}
 
 void FlowGraphCompiler::FinalizeStaticCallTargetsTable(const Code& code) {
   ASSERT(code.static_calls_target_table() == Array::null());

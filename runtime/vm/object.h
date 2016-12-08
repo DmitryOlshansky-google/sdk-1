@@ -4678,6 +4678,8 @@ class Code : public Object {
 
   RawArray* stackmaps() const { return raw_ptr()->stackmaps_; }
   void set_stackmaps(const Array& maps) const;
+  RawTypedData* exception_maps() const { return raw_ptr()->exception_maps_; }
+  void set_exception_maps(const TypedData& maps) const;
   RawStackmap* GetStackmap(uint32_t pc_offset,
                            Array* stackmaps,
                            Stackmap* map) const;

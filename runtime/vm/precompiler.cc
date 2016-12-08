@@ -2678,6 +2678,7 @@ void PrecompileParsedFunctionHelper::FinalizeCompilation(
   graph_compiler->FinalizeStackmaps(code);
   graph_compiler->FinalizeVarDescriptors(code);
   graph_compiler->FinalizeExceptionHandlers(code);
+  graph_compiler->FinalizeExceptionMaps(code);
   graph_compiler->FinalizeStaticCallTargetsTable(code);
 
   if (optimized()) {

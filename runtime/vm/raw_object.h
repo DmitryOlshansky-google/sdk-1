@@ -1080,10 +1080,8 @@ class RawCode : public RawObject {
   };
 
   RAW_HEAP_OBJECT_IMPLEMENTATION(Code);
-
   uword entry_point_;          // Accessed from generated code.
   uword checked_entry_point_;  // Accessed from generated code (AOT only).
-
   RawObject** from() {
     return reinterpret_cast<RawObject**>(&ptr()->object_pool_);
   }
@@ -1095,6 +1093,7 @@ class RawCode : public RawObject {
   RawObject* owner_;  // Function, Null, or a Class.
   RawExceptionHandlers* exception_handlers_;
   RawPcDescriptors* pc_descriptors_;
+  RawTypedData* exception_maps_;
   RawArray* stackmaps_;
   NOT_IN_PRECOMPILED(RawInstructions* active_instructions_);
   NOT_IN_PRECOMPILED(RawArray* deopt_info_array_);
